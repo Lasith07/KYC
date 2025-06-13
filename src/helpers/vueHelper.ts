@@ -6,10 +6,13 @@ export class KycFormData {
   email: string | null;
   nicNumber: string | null;
   nationality: string | null;
-  nicFrontImage: string | null;  // Changed from File to string
-  nicBackImage: string | null;   // Changed from File to string
-  selfieImage: string | null;    // Changed from File to string
+  nicFrontImage: FormData | null;  
+  nicBackImage: FormData | null;   
+  selfieImage: FormData | null;    
   id: number | null;
+  nicFrontPreview: string;
+  nicBackPreview: string;
+  selfiePreview: string;
 
   constructor() {
     this.title = null;
@@ -22,5 +25,8 @@ export class KycFormData {
     this.nicBackImage = null;
     this.selfieImage = null;
     this.id = null;
+    this.nicFrontPreview = '';
+    this.nicBackPreview = '';
+    this.selfiePreview = '';
   }
 }

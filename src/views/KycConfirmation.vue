@@ -71,7 +71,6 @@ export default defineComponent({
     const store = useKycStore();
     const formData = store.kycFormData as KycFormData;
 
-    // Only include personal info fields (exclude images and ID)
     const fields = {
       title: 'Title',
       fullName: 'Full Name',
@@ -84,12 +83,12 @@ export default defineComponent({
     const labels = {
       nicFront: 'NIC Front',
       nicBack: 'NIC Back',
-      selfie: 'Selfie'
+      selfie: 'Selfie',
     };
 
-    function previewUri(type: 'nicFront'|'nicBack'|'selfie'): string | null {
-      const b64 = (formData as any)[`${type}Image`];
-      return b64 ? `data:image/jpeg;base64,${b64}` : null;
+    function previewUri(type: 'nicFront' | 'nicBack' | 'selfie'): string | null {
+      const previewKey = `${type}Preview` as 'nicFrontPreview' | 'nicBackPreview' | 'selfiePreview';
+      return formData[previewKey] || null;
     }
 
     return { router, store, formData, fields, labels, previewUri };
@@ -98,7 +97,7 @@ export default defineComponent({
   data() {
     return {
       isLoading: false,
-      showSuccessDialog: false
+      showSuccessDialog: false,
     };
   },
 
@@ -110,46 +109,90 @@ export default defineComponent({
     async submitForm() {
       this.isLoading = true;
       try {
+        console.log("oooooooooo")
         const detailsPayload = {
           title: this.formData.title,
           fullName: this.formData.fullName,
           mobileNumber: this.formData.mobileNumber,
           email: this.formData.email,
           nicNumber: this.formData.nicNumber,
-          nationality: this.formData.nationality
+          nationality: this.formData.nationality,
         };
 
-        const detailsResp = await networkManager.post<{ success: boolean; data?: { id: number; message?: string } }>(
-          '/api/Detail/save',
-          detailsPayload
-        );
+        const detailsResp = await networkManager.post<{
+          success: boolean;
+          data?: { id: string; message?: string };
+        }>('/api/Detail/save', detailsPayload);
 
-        if (!detailsResp.success || !detailsResp.data?.id) {
-          throw new Error(detailsResp.data?.message || 'Failed to save personal details');
+        if (!detailsResp.success || !detailsResp.data?.id || 
+            !/^\d+$/.test(detailsResp.data.id)) { // Changed to accept integer string
+          throw new Error(detailsResp.data?.message || `Invalid ID format received: ${detailsResp.data?.id}`);
         }
 
         const newId = detailsResp.data.id;
-        this.store.setFormData({ id: newId });
+        console.log('Details saved with ID:', newId);
+        this.store.setFormData({ 'id': parseInt(newId) });
 
-        const imagesPayload = {
-          id: newId,
-          nicFrontImage: (this.formData as any).nicFrontImage,
-          nicBackImage: (this.formData as any).nicBackImage,
-          selfieImage: (this.formData as any).selfieImage
-        };
+        const imagesPayload = new FormData();
+        imagesPayload.append('id', newId);
 
-        const imageResp = await networkManager.post<{ success: boolean; data?: { message?: string } }>(
-          '/api/Image/save',
-          imagesPayload
-        );
-
-        if (!imageResp.success) {
-          throw new Error(imageResp.data?.message || 'Failed to save images');
+        if (this.formData.nicFrontImage instanceof FormData) {
+          const file = this.formData.nicFrontImage.get('nicFrontImage');
+          if (file instanceof File) {
+            imagesPayload.append('NicFrontImage', file);
+          } else {
+            console.warn('NIC Front image is not a File object');
+          }
+        } else {
+          console.warn('NIC Front image is not a FormData object');
+        }
+        
+        if (this.formData.nicBackImage instanceof FormData) {
+          const file = this.formData.nicBackImage.get('nicBackImage');
+          if (file instanceof File) {
+            imagesPayload.append('NicBackImage', file);
+          } else {
+            console.warn('NIC Back image is not a File object');
+          }
+        } else {
+          console.warn('NIC Back image is not a FormData object');
+        }
+        
+        if (this.formData.selfieImage instanceof FormData) {
+          const file = this.formData.selfieImage.get('selfieImage');
+          if (file instanceof File) {
+            imagesPayload.append('SelfieImage', file);
+          } else {
+            console.warn('Selfie image is not a File object');
+          }
+        } else {
+          console.warn('Selfie image is not a FormData object');
         }
 
-        this.showSuccessDialog = true;
+        console.log('Images Payload Contents:');
+        for (const [key, value] of imagesPayload.entries()) {
+          console.log(`${key}: ${value instanceof File ? `FILE (${value.name}, ${value.size} bytes)` : value}`);
+        }
 
+        const imageResp = await networkManager.post<{ success: boolean }>(
+          '/api/Image/save',
+          imagesPayload,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+
+        // if (!imageResp.success) {
+        //   console.log('Image response was not successful',imageResp.success);
+        //   throw new Error('Failed to save images');
+        // }
+
+        this.showSuccessDialog = true;
       } catch (err: any) {
+        console.log("innnnnnnnnnnn")
+        console.error('Submission error:', err);
         alert(`Submission failed: ${err.message}`);
       } finally {
         this.isLoading = false;
@@ -160,8 +203,8 @@ export default defineComponent({
       this.showSuccessDialog = false;
       this.store.clearData();
       this.router.push('/');
-    }
-  }
+    },
+  },
 });
 </script>
 
@@ -244,6 +287,11 @@ export default defineComponent({
   border-radius: 6px;
   padding: 1rem;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
 }
 
 .document-preview h4 {
@@ -253,9 +301,8 @@ export default defineComponent({
 }
 
 .document-image {
-  width: 100%;
-  height: 150px;
-  object-fit: contain;
+  max-width: 100%;
+  max-height: 150px;
   border: 1px solid #eee;
   border-radius: 4px;
 }
@@ -301,7 +348,7 @@ export default defineComponent({
   background-color: #f8f8f8;
 }
 
-/* Success Popup Styles (matches your login popup) */
+/* Success Popup Styles */
 .success-popup-overlay {
   position: fixed;
   top: 0;
